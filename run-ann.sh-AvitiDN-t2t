@@ -1,0 +1,1 @@
+./nextflow-go kuberun kamilareblova/nanopore -r main -head-image 'cerit.io/nextflow/nextflow:25.10.2' -resume -with-report -c ./nextflow.config  --baseDir /mnt/ONTdata/ALL/t2t

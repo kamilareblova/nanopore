@@ -424,21 +424,21 @@ aligned = Channel.fromPath("${params.homeDir}/samplesheet.csv")
 
 //   sorting = SORT(aligned)
 
- varcalling1 = DELLY1(aligned)
- bcf1 = BCFTOOLS1(varcalling1)
+// varcalling1 = DELLY1(aligned)
+// bcf1 = BCFTOOLS1(varcalling1)
 
- varcalling2 = DELLY2(aligned)
- bcf2 = BCFTOOLS2(varcalling2)
+// varcalling2 = DELLY2(aligned)
+// bcf2 = BCFTOOLS2(varcalling2)
 
-// germinalSNP= CLAIR3GERM(aligned)
-// normalizovany1 = NORMALIZACE1(germinalSNP)
-// anotovany1 = ANOTACE_annovar1(normalizovany1)
-// vcftotxt1 = VCF2TXT(anotovany1)
+ germinalSNP= CLAIR3GERM(aligned)
+ normalizovany1 = NORMALIZACE1(germinalSNP)
+ anotovany1 = ANOTACE_annovar1(normalizovany1)
+ vcftotxt1 = VCF2TXT1(anotovany1)
 
-// somaticSNP = CLAIRSTUMOR(aligned)
-// normalizovany2 = NORMALIZACE2(somaticSNP)
-// anotovany2 = ANOTACE_annovar2(normalizovany2)
-// vcftotxt2 = VCF2TXT2(anotovany2)
+ somaticSNP = CLAIRSTUMOR(aligned)
+ normalizovany2 = NORMALIZACE2(somaticSNP)
+ anotovany2 = ANOTACE_annovar2(normalizovany2)
+ vcftotxt2 = VCF2TXT2(anotovany2)
 
 
 // metylovani = METYLACE(aligned)

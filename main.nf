@@ -25,6 +25,51 @@ process SORT {
         """
 }
 
+process INDEX {
+         tag "INDEX on $name"
+         publishDir "${params.outDirectory}/${sample.run}/", mode:'copy'
+
+        label "l_cpu" 
+        label "l_mem"
+
+        input:
+        tuple val(name), val(sample), path(bam)
+
+        output:
+        tuple val(name), val(sample), path("${name}.bam"), path("${name}.bai")
+
+        script:
+        """
+        source activate samtools
+
+        samtools index $bam ${name}.bai
+
+        """
+}
+
+process SELECT {
+
+        tag "SELECT chr on $name"
+
+        label "l_cpu"
+        label "l_mem" 
+
+        input:
+        tuple val(name), val(sample), path("${name}.bam"), path("${name}.bai")
+
+        output:
+        tuple val(name), val(sample), path("${name}.selekce.bam"), path("${name}.selekce.bai")
+
+        script:
+        """
+        source activate samtools
+
+        samtools view -b ${name}.bam chrX > ${name}.selekce.bam
+        samtools index ${name}.selekce.bam ${name}.selekce.bai
+        """
+}
+
+
 
 process DELLY1 {
        tag "DELLY1 on $name"
@@ -129,7 +174,7 @@ process BCFTOOLS2 {
 
 process CLAIR3GERM {
        tag "CLAIR3 on $name"
-       publishDir "${params.outDirectory}/${sample.run}/germ-varianty/", mode:'copy'
+       //publishDir "${params.outDirectory}/${sample.run}/germ-varianty/", mode:'copy'
        container 'quay.io/biocontainers/clair3:2.0.0--py311hbc58adc_0'
         label "l_cpu"
         label "l_mem"
@@ -157,7 +202,7 @@ process CLAIR3GERM {
 
 process NORMALIZACE1 {
         tag "NORMALIZACE1 on $name"
-        publishDir "${params.outDirectory}/${sample.run}/germ-varianty/", mode:'copy'
+        //publishDir "${params.outDirectory}/${sample.run}/germ-varianty/", mode:'copy'
 
         input:
         tuple val(name), val(sample), path(gatk), path(tbi)
@@ -220,7 +265,7 @@ process VCF2TXT1 {
 
 process CLAIRSTUMOR {
        tag "CLAIRS_TO on $name"
-       publishDir "${params.outDirectory}/${sample.run}/somatic-varianty/", mode:'copy'
+       //publishDir "${params.outDirectory}/${sample.run}/somatic-varianty/", mode:'copy'
        container "hkubal/clairs-to:v0.4.2"
         label "l_cpu"
         label "l_mem"
@@ -255,7 +300,7 @@ process NORMALIZACE2 {
         // publishDir "${params.outDirectory}/${sample.run}/somatic-varianty/", mode:'copy'
 
         input:
-        tuple val(name), val(sample), path("${name}.snv.vcf.gz"), path("${name}.snv.vcf.gz.tbi"), path("${name}.indel.vcf.gz"), path("${name}.indel.vcf.gz.tbi")
+        tuple val(name), val(sample), path("${name}.snv.vcf.gz"), path("${name}.snv.vcf.gz.tbi"), path("${name}.indel.vcf.gz"), path("${name}.indel.vcf.gz.tbi"), path(bam), path(bai)
 
         output:
         tuple val(name), val(sample), path("${name}.norm.vcf.gz"), path("${name}.norm.vcf.gz.tbi")
@@ -275,7 +320,6 @@ process NORMALIZACE2 {
 
         """
 }
-
 
 process ANOTACE_annovar2 {
        tag "ANOTACE2 on $name"
@@ -315,7 +359,162 @@ process VCF2TXT2 {
         """
 }
 
+process CLAIR3GERMgenom {
+       tag "CLAIR3genom on $name"
+       //publishDir "${params.outDirectory}/${sample.run}/phasing/", mode:'copy'
+       container 'quay.io/biocontainers/clair3:2.0.0--py311hbc58adc_0'
+        label "l_cpu"
+        label "l_mem"
 
+        input:
+        tuple val(name), val(sample), path(bam), path(bai)
+
+        output:
+        tuple val(name), val(sample), path("${name}.vcf.gz"), path("${name}.vcf.gz.tbi"), path(bam), path(bai)
+
+        script:
+        """
+        echo CLAIR3genom $name
+
+        export TMPDIR=\${PWD}/tmp
+        mkdir -p \$TMPDIR
+
+ run_clair3.sh --bam_fn=$bam --ref_fn=${params.ref} --platform="ont" --model_path=${params.ontmodel} --output=\${PWD}/germ-${name} --threads=${task.cpus}  --bed_fn=${params.varbed}
+
+        cp germ-${name}/merge_output.vcf.gz ${name}.vcf.gz
+        cp germ-${name}/merge_output.vcf.gz.tbi ${name}.vcf.gz.tbi
+
+        """
+}
+
+
+
+process NORMALIZACE2Genom {
+        tag "NORMALIZACE2Genom on $name"
+        //publishDir "${params.outDirectory}/${sample.run}/phasing/", mode:'copy'
+
+        input:
+        tuple val(name), val(sample), path("${name}.vcf.gz"), path("${name}.vcf.gz.tbi"), path(bam), path(bai)
+
+        output:
+        tuple val(name), val(sample), path("${name}.norm.genom.vcf.gz"), path("${name}.norm.genom.vcf.gz.tbi"), path(bam), path(bai)
+
+        script:
+        """
+        source activate bcftoolsbgziptabix
+        echo NORMALIZACE2Genom $name
+
+        bcftools norm -f ${params.ref} -m -both ${name}.vcf.gz -o ${name}.norm.genom.vcf
+        bgzip ${name}.norm.genom.vcf
+        tabix ${name}.norm.genom.vcf.gz
+
+        """
+}
+
+
+
+process FAZOVANI {
+
+        tag "FAZOVANI on $name"
+        //publishDir "${params.outDirectory}/${sample.run}/phasing/", mode:'copy'
+
+        input:
+        tuple val(name), val(sample), path("${name}.norm.vcf.gz"), path("${name}.norm.vcf.gz.tbi"), path(bam), path(bai)
+
+        output:
+        tuple val(name), val(sample), path("${name}.phased.norm.vcf.gz"), path(bam), path(bai)
+ 
+        script:
+        """
+        source activate whatshap
+        whatshap phase --reference ${params.ref} ${name}.norm.vcf.gz  $bam -o ${name}.phased.norm.vcf.gz --ignore-read-groups 
+
+        """
+}
+
+process FAZOVANIindex {
+
+        tag "FAZOVANIindex on $name" 
+        //publishDir "${params.outDirectory}/${sample.run}/phasing/", mode:'copy'
+
+        input:
+        tuple val(name), val(sample), path("${name}.phased.norm.vcf.gz"), path(bam), path(bai)
+
+        output:
+        tuple val(name), val(sample), path("${name}.phased.norm.vcf.gz"), path("${name}.phased.norm.vcf.gz.tbi"), path(bam), path(bai) 
+
+         script:
+         """
+         source activate bcftoolsbgziptabix
+         echo FAZOVANIindex $name
+
+         tabix -p vcf ${name}.phased.norm.vcf.gz
+
+         """
+}
+
+process FAZOVANIhap {
+
+        tag "FAZOVANIhap on $name"
+        publishDir "${params.outDirectory}/${sample.run}/phasing/", mode:'copy'
+
+        input:
+        tuple val(name), val(sample), path("${name}.phased.norm.vcf.gz"), path("${name}.phased.norm.vcf.gz.tbi"), path(bam), path(bai)
+        
+        output:
+        tuple val(name), val(sample),  path("${name}.haplotypes.tsv"), path("${name}.phased.bam"), path("${name}.phased.h1.bam"), path("${name}.phased.h2.bam")
+
+        script:
+        """
+        source activate whatshap
+        whatshap haplotag -o ${name}.phased.bam --reference ${params.ref} ${name}.phased.norm.vcf.gz $bam --output-haplotag-list ${name}.haplotypes.tsv --ignore-read-groups --skip-missing-contigs
+        
+        whatshap split  --output-h1 ${name}.phased.h1.bam --output-h2 ${name}.phased.h2.bam ${name}.phased.bam ${name}.haplotypes.tsv
+
+        """
+}
+
+process CRAM {
+         
+         tag "CRAM on $name"
+         publishDir "${params.outDirectory}/${sample.run}/phasing/", mode:'copy'
+ 
+         input:
+         tuple val(name), val(sample), path("${name}.haplotypes.tsv"), path("${name}.phased.bam")
+
+         output: 
+         tuple val(name), val(sample), path("${name}.phased.cram"), path("${name}.phased.cram.crai")
+
+         script:
+         """ 
+         source activate samtools
+
+         samtools view -T ${params.ref} -C -o ${name}.phased.cram ${name}.phased.bam
+         samtools index ${name}.phased.cram
+
+         """
+}
+
+process INDEX2 {
+         tag "INDEX2 on $name"
+        publishDir "${params.outDirectory}/${sample.run}/phasing/", mode:'copy'
+
+        input:
+        tuple val(name), val(sample), path("${name}.haplotypes.tsv"), path("${name}.phased.bam"), path("${name}.phased.h1.bam"), path("${name}.phased.h2.bam")
+
+        output:
+        tuple val(name), val(sample), path("${name}.phased.bam"),  path("${name}.phased.bai"), path("${name}.phased.h1.bam"), path("${name}.phased.h1.bai"), path("${name}.phased.h2.bam"), path("${name}.phased.h2.bai")
+
+        script:
+        """
+        source activate samtools
+
+        samtools index ${name}.phased.bam ${name}.phased.bai
+        samtools index ${name}.phased.h1.bam ${name}.phased.h1.bai
+        samtools index ${name}.phased.h2.bam ${name}.phased.h2.bai
+
+        """
+}
 
 process METYLACE {
         tag "Metylace on $name"
@@ -337,6 +536,36 @@ process METYLACE {
         modkit pileup $bam -  --cpg  --ref ${params.ref} --combine-strands --ignore h > ${name}-bedmetyl
         """ 
 
+}
+
+process METYLACEvallova {
+
+        tag "Metylace-vallova on $name"
+        publishDir "${params.outDirectory}/${sample.run}/metylace", mode:'copy'
+        container "fellen31/modkit:v0.5.1-rc1"
+
+        label "l_cpu"
+        label "l_mem"
+
+        input:
+        tuple val(name), val(sample), path("${name}.phased.bam"),  path("${name}.phased.bai"), path("${name}.phased.h1.bam"), path("${name}.phased.h1.bai"), path("${name}.phased.h2.bam"), path("${name}.phased.h2.bai")
+
+        output:
+         tuple val(name),
+          val(sample), path("${name}-bedmetyl.bed"), path("${name}-h1-bedmetyl.bed"), path("${name}-h2-bedmetyl.bed")
+
+    script:
+    """
+       echo "METYLACE $name"
+
+    modkit pileup ${name}.phased.bam ${name}-bedmetyl.bed --cpg --ref ${params.ref} --combine-strands --ignore h
+
+    modkit pileup ${name}.phased.h1.bam ${name}-h1-bedmetyl.bed --cpg --ref ${params.ref} --combine-strands --ignore h
+
+    modkit pileup ${name}.phased.h2.bam ${name}-h2-bedmetyl.bed --cpg --ref ${params.ref} --combine-strands --ignore h
+
+
+    """
 }
 
 process BGZIP1 {
@@ -363,7 +592,6 @@ process BGZIP1 {
 
         """
 }
-
 
 
 process COVERAGE {
@@ -417,32 +645,44 @@ aligned = Channel.fromPath("${params.homeDir}/samplesheet.csv")
 
     def meta = [name: row.name, run: row.run]
     def bam = file("${runDir}/${meta.name}.bam")
-    def bai = file("${runDir}/${meta.name}.bai")
-    [meta.name, meta, bam, bai]
+    [meta.name, meta, bam]
 }
      . view()
 
-//   sorting = SORT(aligned)
-
-// varcalling1 = DELLY1(aligned)
-// bcf1 = BCFTOOLS1(varcalling1)
-
-// varcalling2 = DELLY2(aligned)
-// bcf2 = BCFTOOLS2(varcalling2)
-
- germinalSNP= CLAIR3GERM(aligned)
- normalizovany1 = NORMALIZACE1(germinalSNP)
- anotovany1 = ANOTACE_annovar1(normalizovany1)
- vcftotxt1 = VCF2TXT1(anotovany1)
-
- somaticSNP = CLAIRSTUMOR(aligned)
- normalizovany2 = NORMALIZACE2(somaticSNP)
- anotovany2 = ANOTACE_annovar2(normalizovany2)
- vcftotxt2 = VCF2TXT2(anotovany2)
+//sorting = SORT(aligned)
 
 
-// metylovani = METYLACE(aligned)
-// bgzipovani = BGZIP1(metylovani)
+bamindexovany = INDEX(aligned)
+varcalling1 = DELLY1(bamindexovany)
+bcf1 = BCFTOOLS1(varcalling1)
 
-// coverage_results = COVERAGE(aligned)
+varcalling2 = DELLY2(bamindexovany)
+bcf2 = BCFTOOLS2(varcalling2)
+
+// germinalSNP= CLAIR3GERM(aligned)
+// normalizovany1 = NORMALIZACE1(germinalSNP)
+// anotovany1 = ANOTACE_annovar1(normalizovany1)
+//  vcftotxt1 = VCF2TXT1(anotovany1)
+
+// somaticSNP = CLAIRSTUMOR(aligned)
+// normalizovany2 = NORMALIZACE2(somaticSNP)
+// anotovany2 = ANOTACE_annovar2(normalizovany2)
+// vcftotxt2 = VCF2TXT2(anotovany2)
+
+
+selekce = SELECT(bamindexovany)
+SNPGenom = CLAIR3GERMgenom(selekce)
+normalizovany2Genom = NORMALIZACE2Genom(SNPGenom)
+fazovani = FAZOVANI(normalizovany2Genom)
+fazindex = FAZOVANIindex(fazovani)
+fazhap = FAZOVANIhap(fazindex)
+//cram = CRAM(fazhap)
+indexovani2 = INDEX2(fazhap)
+
+//metylovani = METYLACE(bamindexovany)
+//bgzipovani = BGZIP1(metylovani)
+
+metylace = METYLACEvallova(indexovani2)
+
+// coverage_results = COVERAGE(bamindexovany)
 }
